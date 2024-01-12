@@ -12,3 +12,4 @@
 
 - Automatically optimize images for serving
 - Check images for alt text?
+- Serving should not be done by this, it should just generate files to be dropped into a directory to be served by nginx
