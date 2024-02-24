@@ -32,6 +32,7 @@ fn unprefixed_files() -> Vec<String> {
         "templates/article.hbs",
         "templates/main.hbs",
         "templates/list.hbs",
+        "templates/article_preview.hbs",
         "style/tailwind.config.js",
         "style/package.json",
         "style/style.css",
