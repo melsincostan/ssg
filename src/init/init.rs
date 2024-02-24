@@ -4,7 +4,7 @@ use std::fs;
 mod infos;
 
 pub fn run() {
-    fs::create_dir(infos::main_folder()).expect("Could not create the main folder");
+    fs::create_dir(infos::BASE_DIRECTORY).expect("Could not create the main folder");
     infos::folders()
         .iter()
         .try_for_each(|e| fs::create_dir(e))

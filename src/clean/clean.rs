@@ -20,8 +20,8 @@ pub fn run() {
                 println!("Couldn't delete directory {e}: {}", err.unwrap().to_string());
             }
         });
-    let err = fs::remove_dir(infos::main_folder()).err();
+    let err = fs::remove_dir(infos::BASE_DIRECTORY).err();
     if err.is_some() {
-        println!("Couldn't delete main directory {}: {}", infos::main_folder(), err.unwrap().to_string());
+        println!("Couldn't delete main directory {}: {}", infos::BASE_DIRECTORY, err.unwrap().to_string());
     }
 }
