@@ -1,18 +1,21 @@
+use chrono::{DateTime, Utc};
 use comrak::nodes::{AstNode, NodeValue};
 use comrak::{format_html, parse_document, Arena, Options};
 use gray_matter::engine::YAML;
 use gray_matter::Matter;
+use handlebars::Handlebars;
 use image::imageops;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fmt::format;
 use std::fs::{self, DirEntry, ReadDir};
 use std::path::Path;
-use std::str::Bytes;
-use sha2::{Sha256, Digest};
+use std::time::SystemTime;
+use urlencoding::encode;
 
 use crate::actions::build::infos::ARTICLES_DIRECTORY;
 
-#[path ="../infos.rs"]
+#[path = "../infos.rs"]
 mod infos;
 
 #[path = "../checks.rs"]
@@ -21,14 +24,52 @@ mod checks;
 #[derive(Deserialize, Debug)]
 struct FrontMatter {
     title: String,
+    tagline: String,
     tags: Vec<String>,
     date: String,
     author: String,
     edited: bool,
+    lang: String,
     edited_date: Option<String>,
 }
 
+#[derive(Serialize, Debug)]
+struct Article {
+    title: String,
+    tagline: String,
+    tags: String,
+    date: String,
+    author: String,
+    lang: String,
+    article: String,
+    generated: String,
+}
+
+#[derive(Serialize, Debug)]
+struct ArticleList {
+    article_cards: Vec<String>,
+    generated: String,
+}
+
+#[derive(Serialize, Debug)]
+struct ArticleCard {
+    article_link: String,
+    title: String,
+    tagline: String,
+    tags: String,
+    date: String,
+}
+
+#[derive(Serialize, Debug)]
+struct Main {
+    generated: String,
+}
+
 pub fn run() {
+
+    let time = SystemTime::now();
+    let timestamp: DateTime<Utc> = time.into();
+
     if !checks::check_folders() {
         println!("Not all folders are OK, quitting!");
         return;
@@ -39,8 +80,13 @@ pub fn run() {
         return;
     }
 
+    if fs::remove_dir_all(infos::STAGING_DIRECTORY).is_err() {
+        println!("Could not clear the staging directory, trying to continue");
+    }
+
     if fs::create_dir(infos::STAGING_DIRECTORY).is_err() {
         println!("Could not create the staging directory, quitting!");
+        return;
     }
 
     if fs::create_dir(infos::get_staging_folder_path(infos::IMAGES_DIRECTORY)).is_err() {
@@ -53,27 +99,120 @@ pub fn run() {
         return;
     }
 
-    get_articles();
+    let articles_template =
+        fs::read_to_string(infos::get_file_path(infos::ARTICLE_TEMPLATE)).unwrap();
+    let main_template = fs::read_to_string(infos::get_file_path(infos::MAINPAGE_TEMPLATE)).unwrap();
+    let list_template =
+        fs::read_to_string(infos::get_file_path(infos::ARTICLELIST_TEMPLATE)).unwrap();
+    let card_template = fs::read_to_string(infos::get_file_path(infos::ARTICLECARD_TEMPLATE)).unwrap();
+    let mut hbs = Handlebars::new();
+
+    hbs.register_template_string("article", articles_template)
+        .expect("Could not register articles template");
+    hbs.register_template_string("main", main_template)
+        .expect("Could not register main page template");
+    hbs.register_template_string("list", list_template)
+        .expect("Could not register list template");
+    hbs.register_template_string("card", card_template)
+        .expect("Could not register card template");
+
+    let articles_wrapped = get_articles();
+    if articles_wrapped.is_none() {
+        println!("Could not parse articles, quitting!");
+        return;
+    }
+
+
+    let mut cards: Vec<String> = vec![];
+    let articles = articles_wrapped.unwrap();
+
+    for article in articles {
+        let full_html = hbs
+            .render("article", &article)
+            .expect("Could not parse article into template");
+        let article_filename =
+            format!("{}-{}.html", article.date, article.title.to_lowercase());
+        let path = Path::new(&infos::get_staging_folder_path(infos::ARTICLES_DIRECTORY))
+            .join(article_filename.clone());
+        let articleCard = hbs.render("card", &ArticleCard{
+            article_link: article_filename,
+            title: article.title,
+            tagline: article.tagline,
+            date: article.date,
+            tags: article.tags,
+        }).expect("Could not render article card");
+        cards.push(articleCard);
+        fs::write(path, full_html);
+    }
+
+    let list_page_full = hbs.render("list", &ArticleList{
+        article_cards: cards,
+        generated: timestamp.to_rfc3339(),
+    }).expect("Could not render list page");
+
+    let main_page_full = hbs.render("main", &Main{
+        generated: timestamp.to_rfc3339(),
+    }).expect("Could not render main page");
+
+    let main_path = Path::new(&infos::STAGING_DIRECTORY).join("index.html");
+    let list_path = infos::get_staging_file_path((infos::ARTICLES_DIRECTORY, "index.html"));
+    fs::write(main_path, main_page_full);
+    fs::write(list_path, list_page_full);
+
 }
 
-fn get_articles() {
+fn get_articles() -> Option<Vec<Article>> {
     let matter_engine = Matter::<YAML>::new();
     let articles_dir_content = fs::read_dir(infos::get_folder_path(infos::ARTICLES_DIRECTORY));
     let dir_entries: ReadDir;
+    let mut articles: Vec<Article> = vec![];
+    let time = SystemTime::now();
+    let timestamp: DateTime<Utc> = time.into();
+
     if articles_dir_content.is_ok() {
         dir_entries = articles_dir_content.unwrap();
         for dir_entry in dir_entries {
             if dir_entry.is_ok() {
-                process_article(dir_entry.unwrap(), &matter_engine);
+                let res = process_article(dir_entry.unwrap(), &matter_engine);
+                if res.is_some() {
+                    let article_raw = res.unwrap();
+                    let article = Article {
+                        title: article_raw.0.title,
+                        tagline: article_raw.0.tagline,
+                        tags: article_raw.0.tags.join(", "),
+                        author: article_raw.0.author,
+                        date: format!(
+                            "{}{}",
+                            article_raw.0.date,
+                            if article_raw.0.edited {
+                                format!(" (Edited {})", article_raw.0.edited_date.unwrap())
+                            } else {
+                                "".to_string()
+                            }
+                        ),
+                        lang: article_raw.0.lang,
+                        article: article_raw.1,
+                        generated: timestamp.to_rfc3339(),
+                    };
+                    articles.push(article);
+                }
             }
         }
     } else {
         println!("Could not read articles, quitting!");
-        return;
+        return None;
     }
+    articles.sort_by(|a, b| {
+        // return the newest articles first. This assumes that dates are in YYYY-MM-DD format...
+        b.date.cmp(&a.date)
+    });
+    Some(articles)
 }
 
-fn process_article(dir_entry: DirEntry, matter_engine: &Matter<YAML>) {
+fn process_article(
+    dir_entry: DirEntry,
+    matter_engine: &Matter<YAML>,
+) -> Option<(FrontMatter, String)> {
     let filename = dir_entry.file_name();
     let filetype = dir_entry.file_type();
     let mut options: Options = Options::default();
@@ -82,7 +221,7 @@ fn process_article(dir_entry: DirEntry, matter_engine: &Matter<YAML>) {
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
     if filetype.is_err() || filetype.unwrap().is_dir() {
-        return;
+        return None;
     }
     println!("Article: {:?}", filename);
     let file_contents = fs::read_to_string(infos::get_file_path((
@@ -92,7 +231,7 @@ fn process_article(dir_entry: DirEntry, matter_engine: &Matter<YAML>) {
     .expect("Could not read article contents");
     let frontmatter = get_front_matter(&file_contents, matter_engine);
     let contents = process_contents(&file_contents, &options);
-    println!("{}", contents);
+    Some((frontmatter, contents))
 }
 
 fn get_front_matter(file_contents: &str, matter_engine: &Matter<YAML>) -> FrontMatter {
@@ -103,10 +242,6 @@ fn get_front_matter(file_contents: &str, matter_engine: &Matter<YAML>) -> FrontM
 }
 
 fn process_contents(file_contents: &str, options: &Options) -> String {
-    // let base_html = markdown_to_html(file_contents, options);
-    // // this somehow seems better than going through an AST
-    // let wrapped_tables = base_html.replace("<table>", "<div class=\"table_container\"><table>").replace("</table>", "</table></div>");
-    // wrapped_tables
     let arena = Arena::new();
     let root = parse_document(&arena, file_contents, options);
     iter_nodes(root, &|node| match &mut node.data.borrow_mut().value {
@@ -119,9 +254,9 @@ fn process_contents(file_contents: &str, options: &Options) -> String {
     });
 
     let mut html = vec![];
-    format_html(root, options, &mut html);
+    format_html(root, options, &mut html).expect("Could not parse markdown");
     let unwrapped_tables_html = String::from_utf8(html).unwrap();
-    // maybe faster than going through the AST idk
+    // maybe faster than going through the AST idk probably not but algorithms
     unwrapped_tables_html
         .replace("<table>", "<div class=\"table-container\">\n<table>")
         .replace("</table>", "</table>\n</div>")
@@ -167,7 +302,7 @@ fn process_imgs(url: &str) -> String {
             return url.to_string();
         }
         let img = res.unwrap();
-        img.resize(1920, 1080, imageops::Lanczos3);
+        img.resize(1920, 1080, imageops::Lanczos3); // this should nuke exif data as well, nice!
         let saved = img.save(staging_path.clone());
         if saved.is_err() {
             println!("Could not save the resized image in {staging_path}");
