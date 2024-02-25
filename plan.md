@@ -13,3 +13,7 @@
 - Automatically optimize images for serving
 - Check images for alt text?
 - Serving should not be done by this, it should just generate files to be dropped into a directory to be served by nginx
+
+# Status 25.02.2024
+
+It works, can generate what i need it to. The code needs cleanup, lots of it, probably.
