@@ -15,6 +15,8 @@ use urlencoding::encode;
 
 use crate::actions::build::infos::ARTICLES_DIRECTORY;
 
+use self::infos::get_file_path;
+
 #[path = "../infos.rs"]
 mod infos;
 
@@ -43,12 +45,14 @@ struct Article {
     lang: String,
     article: String,
     generated: String,
+    stylesheet: String,
 }
 
 #[derive(Serialize, Debug)]
 struct ArticleList {
     article_cards: Vec<String>,
     generated: String,
+    stylesheet: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -63,6 +67,7 @@ struct ArticleCard {
 #[derive(Serialize, Debug)]
 struct Main {
     generated: String,
+    stylesheet: String,
 }
 
 pub fn run() {
@@ -116,7 +121,11 @@ pub fn run() {
     hbs.register_template_string("card", card_template)
         .expect("Could not register card template");
 
-    let articles_wrapped = get_articles();
+    let mut hasher = Sha256::new();
+    hasher.update(fs::read_to_string(get_file_path(infos::STYLESHEET)).unwrap().as_bytes());
+    let stylesheet_output_name = format!("main.{:x}.css", hasher.finalize());
+
+    let articles_wrapped = get_articles(stylesheet_output_name.clone());
     if articles_wrapped.is_none() {
         println!("Could not parse articles, quitting!");
         return;
@@ -148,10 +157,12 @@ pub fn run() {
     let list_page_full = hbs.render("list", &ArticleList{
         article_cards: cards,
         generated: timestamp.to_rfc3339(),
+        stylesheet: stylesheet_output_name.clone(),
     }).expect("Could not render list page");
 
     let main_page_full = hbs.render("main", &Main{
         generated: timestamp.to_rfc3339(),
+        stylesheet: stylesheet_output_name,
     }).expect("Could not render main page");
 
     let main_path = Path::new(&infos::STAGING_DIRECTORY).join("index.html");
@@ -161,7 +172,7 @@ pub fn run() {
 
 }
 
-fn get_articles() -> Option<Vec<Article>> {
+fn get_articles(stylesheet: String) -> Option<Vec<Article>> {
     let matter_engine = Matter::<YAML>::new();
     let articles_dir_content = fs::read_dir(infos::get_folder_path(infos::ARTICLES_DIRECTORY));
     let dir_entries: ReadDir;
@@ -193,6 +204,7 @@ fn get_articles() -> Option<Vec<Article>> {
                         lang: article_raw.0.lang,
                         article: article_raw.1,
                         generated: timestamp.to_rfc3339(),
+                        stylesheet: stylesheet.clone(),
                     };
                     articles.push(article);
                 }
