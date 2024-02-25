@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use std::fmt::format;
 use std::fs::{self, DirEntry, ReadDir};
 use std::path::Path;
+use std::process::Command;
 use std::time::SystemTime;
 use urlencoding::encode;
 
@@ -71,7 +72,6 @@ struct Main {
 }
 
 pub fn run() {
-
     let time = SystemTime::now();
     let timestamp: DateTime<Utc> = time.into();
 
@@ -109,7 +109,8 @@ pub fn run() {
     let main_template = fs::read_to_string(infos::get_file_path(infos::MAINPAGE_TEMPLATE)).unwrap();
     let list_template =
         fs::read_to_string(infos::get_file_path(infos::ARTICLELIST_TEMPLATE)).unwrap();
-    let card_template = fs::read_to_string(infos::get_file_path(infos::ARTICLECARD_TEMPLATE)).unwrap();
+    let card_template =
+        fs::read_to_string(infos::get_file_path(infos::ARTICLECARD_TEMPLATE)).unwrap();
     let mut hbs = Handlebars::new();
 
     hbs.register_template_string("article", articles_template)
@@ -122,7 +123,11 @@ pub fn run() {
         .expect("Could not register card template");
 
     let mut hasher = Sha256::new();
-    hasher.update(fs::read_to_string(get_file_path(infos::STYLESHEET)).unwrap().as_bytes());
+    hasher.update(
+        fs::read_to_string(get_file_path(infos::STYLESHEET))
+            .unwrap()
+            .as_bytes(),
+    );
     let stylesheet_output_name = format!("main.{:x}.css", hasher.finalize());
 
     let articles_wrapped = get_articles(stylesheet_output_name.clone());
@@ -131,7 +136,6 @@ pub fn run() {
         return;
     }
 
-
     let mut cards: Vec<String> = vec![];
     let articles = articles_wrapped.unwrap();
 
@@ -139,37 +143,68 @@ pub fn run() {
         let full_html = hbs
             .render("article", &article)
             .expect("Could not parse article into template");
-        let article_filename =
-            format!("{}-{}.html", article.date, article.title.to_lowercase());
+        let article_filename = format!("{}-{}.html", article.date, article.title.to_lowercase());
         let path = Path::new(&infos::get_staging_folder_path(infos::ARTICLES_DIRECTORY))
             .join(article_filename.clone());
-        let articleCard = hbs.render("card", &ArticleCard{
-            article_link: article_filename,
-            title: article.title,
-            tagline: article.tagline,
-            date: article.date,
-            tags: article.tags,
-        }).expect("Could not render article card");
+        let articleCard = hbs
+            .render(
+                "card",
+                &ArticleCard {
+                    article_link: article_filename,
+                    title: article.title,
+                    tagline: article.tagline,
+                    date: article.date,
+                    tags: article.tags,
+                },
+            )
+            .expect("Could not render article card");
         cards.push(articleCard);
         fs::write(path, full_html);
     }
 
-    let list_page_full = hbs.render("list", &ArticleList{
-        article_cards: cards,
-        generated: timestamp.to_rfc3339(),
-        stylesheet: stylesheet_output_name.clone(),
-    }).expect("Could not render list page");
+    let list_page_full = hbs
+        .render(
+            "list",
+            &ArticleList {
+                article_cards: cards,
+                generated: timestamp.to_rfc3339(),
+                stylesheet: format!("../{stylesheet_output_name}"),
+            },
+        )
+        .expect("Could not render list page");
 
-    let main_page_full = hbs.render("main", &Main{
-        generated: timestamp.to_rfc3339(),
-        stylesheet: stylesheet_output_name,
-    }).expect("Could not render main page");
+    let main_page_full = hbs
+        .render(
+            "main",
+            &Main {
+                generated: timestamp.to_rfc3339(),
+                stylesheet: stylesheet_output_name.clone(),
+            },
+        )
+        .expect("Could not render main page");
 
     let main_path = Path::new(&infos::STAGING_DIRECTORY).join("index.html");
     let list_path = infos::get_staging_file_path((infos::ARTICLES_DIRECTORY, "index.html"));
     fs::write(main_path, main_page_full);
     fs::write(list_path, list_page_full);
 
+    // TODO: staging directory hardcoded in the tailwind config...
+    // generate the css using npx.
+    // Needs npx, will get latest tailwind from npm
+    let css_output = Path::new(infos::STAGING_DIRECTORY).join(stylesheet_output_name);
+    let css_output_path = css_output.to_str().unwrap();
+    Command::new("npx")
+        .arg("-y")
+        .arg("tailwindcss")
+        .arg("-c")
+        .arg(infos::get_file_path(infos::TAILWIND_CONFIG))
+        .arg("-i")
+        .arg(infos::get_file_path(infos::STYLESHEET))
+        .arg("-o")
+        .arg(css_output_path)
+        .arg("--minify")
+        .status()
+        .expect("Could not create tailwind CSS");
 }
 
 fn get_articles(stylesheet: String) -> Option<Vec<Article>> {
@@ -204,7 +239,7 @@ fn get_articles(stylesheet: String) -> Option<Vec<Article>> {
                         lang: article_raw.0.lang,
                         article: article_raw.1,
                         generated: timestamp.to_rfc3339(),
-                        stylesheet: stylesheet.clone(),
+                        stylesheet: format!("../{stylesheet}"),
                     };
                     articles.push(article);
                 }

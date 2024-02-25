@@ -2,7 +2,7 @@ use std::path::Path;
 
 pub static BASE_DIRECTORY: &str = "site";
 
-pub static STAGING_DIRECTORY: &str = "staging";
+pub static STAGING_DIRECTORY: &str = "staging"; // TODO: staging directory hardcoded in the tailwind config...
 
 pub static TEMPLATES_DIRECTORY: &str = "templates";
 pub static STYLE_DIRECTORY: &str = "style";
@@ -15,7 +15,6 @@ pub static ARTICLELIST_TEMPLATE: (&str, &str) = (TEMPLATES_DIRECTORY, "list.hbs"
 pub static ARTICLECARD_TEMPLATE: (&str, &str) = (TEMPLATES_DIRECTORY, "card.hbs");
 
 pub static TAILWIND_CONFIG: (&str, &str) = (STYLE_DIRECTORY, "tailwind.config.js");
-pub static PACKAGE_JSON: (&str, &str) = (STYLE_DIRECTORY, "package.json");
 pub static STYLESHEET: (&str, &str) = (STYLE_DIRECTORY, "style.css");
 
 pub fn get_file_path(file: (&str, &str)) -> String {
@@ -71,7 +70,6 @@ pub fn files() -> Vec<String> {
         ARTICLECARD_TEMPLATE,
         ARTICLELIST_TEMPLATE,
         TAILWIND_CONFIG,
-        PACKAGE_JSON,
         STYLESHEET,
     ]
     .iter()
