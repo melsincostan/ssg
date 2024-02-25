@@ -2,10 +2,12 @@ use std::path::Path;
 
 pub static BASE_DIRECTORY: &str = "site";
 
+pub static STAGING_DIRECTORY: &str = "staging";
+
 pub static TEMPLATES_DIRECTORY: &str = "templates";
 pub static STYLE_DIRECTORY: &str = "style";
 pub static IMAGES_DIRECTORY: &str = "images";
-pub static ARTICLES_DIRECTORY: &str = "articles";
+pub static ARTICLES_DIRECTORY: &str = "notes";
 
 pub static ARTICLE_TEMPLATE: (&str, &str) = (TEMPLATES_DIRECTORY, "article.hbs");
 pub static MAINPAGE_TEMPLATE: (&str, &str) = (TEMPLATES_DIRECTORY, "main.hbs");
@@ -25,8 +27,25 @@ pub fn get_file_path(file: (&str, &str)) -> String {
         .to_string()
 }
 
+pub fn get_staging_file_path(file: (&str, &str)) -> String {
+    Path::new(STAGING_DIRECTORY)
+        .join(file.0)
+        .join(file.1)
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
 pub fn get_folder_path(folder: &str) -> String {
     Path::new(BASE_DIRECTORY)
+        .join(folder)
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+pub fn get_staging_folder_path(folder: &str) -> String {
+    Path::new(STAGING_DIRECTORY)
         .join(folder)
         .to_str()
         .unwrap()

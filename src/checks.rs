@@ -1,6 +1,6 @@
 use std::path::Path;
 
-#[path = "../infos/infos.rs"]
+#[path = "./infos.rs"]
 mod infos;
 
 pub fn check_folders() -> bool {

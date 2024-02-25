@@ -1,6 +1,6 @@
 use std::fs;
 
-#[path = "../infos/infos.rs"]
+#[path = "../infos.rs"]
 mod infos;
 
 pub fn run() {

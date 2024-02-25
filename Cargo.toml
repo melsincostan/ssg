@@ -8,4 +8,6 @@ edition = "2021"
 [dependencies]
 comrak = "0.21.0"
 gray_matter = "0.2.6"
+image = "0.24.9"
 serde = "1.0.197"
+sha2 = "0.10.8"
